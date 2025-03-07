@@ -628,10 +628,11 @@ async function listener()
 {
   try
   {
+    await makeRPCSClients();
     //listen for unconfirmed transactions and balloted block
-    for (var j = 0; j < RPC_SOCKET_URLs.length; j++)
+    for (var i = 0; i < RPC_SOCKET_URLs.length; i++)
     {
-      await listenToRPCSockets(RPC_SOCKET_URLs[j],JSON_RPC_NODE_URLs[i]);
+      await listenToRPCSockets(RPC_SOCKET_URLs[i],JSON_RPC_NODE_URLs[i]);
     }
   } catch (error) {
     console.log("Error : ", error);
@@ -664,6 +665,7 @@ async function processBallotedQueue()
         else{
           await DB(ballotedDataModel.table)
           .insert({ rpcURL : ballotedTransactionsQueue[0].rpcURL,
+            block_number : ballotedTransactionsQueue[0].block_number,
             hash: ballotedTransactionsQueue[0].hash,
             timestamp: ballotedTransactionsQueue[0].timestamp,
             data: ballotedTransactionsQueue[0].data
@@ -701,7 +703,7 @@ async function processBlocksQueue()
         let blockData = JSON.parse(blocksQueue[0].data);
 
         let blocks = await DB(BlockModel.table)
-        .where({ rpcURl: blocksQueue[0].rpcURL,
+        .where({ rpcURL: blocksQueue[0].rpcURL,
            block_number : (blockData.block_number).toString(),
            block_hash: blockData.block_hash 
         });
@@ -743,7 +745,7 @@ async function processBlocksQueue()
               let transaction = await DB(TransactionModel.table)
               .where({ 
                 rpcURL: blocksQueue[0].rpcURL,
-                block_number: blockData.block_number,
+                block: blockData.block_number,
                 hash :  blockData.transactions[i]
               });
 
@@ -804,4 +806,4 @@ async function processBlocksQueue()
 //processBallotedQueue();
 //processBlocksQueue();
 
-module.exports = router;
+module.exports = router;    

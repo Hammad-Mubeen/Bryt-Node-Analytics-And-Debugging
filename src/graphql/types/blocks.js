@@ -26,7 +26,9 @@ const blocksType = new GraphQLObjectType({
         value: {type: GraphQLString },
         data: {type: GraphQLString },
         to: {type: GraphQLString },
-        block_hash: {type: GraphQLString }
+        block_hash: {type: GraphQLString },
+        rpcURL:  {type: GraphQLString },
+        Status:  {type: GraphQLString }
   })
 });
   

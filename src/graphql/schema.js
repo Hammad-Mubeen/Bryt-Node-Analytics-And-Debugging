@@ -3,12 +3,9 @@ const { GraphQLSchema, GraphQLObjectType } = require("graphql");
 
 // Import queries
 const {
+  allNodes,
   blocks,
-  block,
-  transactions,
-  transaction,
-  transactionsByAddress,
-  transactionsByStatus
+  getBlocksBallotedAndTransactions
 } = require("./queries");
 
 // Define QueryType
@@ -16,12 +13,9 @@ const QueryType = new GraphQLObjectType({
   name: "QueryType",
   description: "Queries",
   fields: {
+    allNodes,
     blocks,
-    block,
-    transactions,
-    transaction,
-    transactionsByAddress,
-    transactionsByStatus
+    getBlocksBallotedAndTransactions
   },
 });
 

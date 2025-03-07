@@ -4,21 +4,37 @@ const {
 } = require("graphql");
 
 // import types
-const { blocksType } = require("./types/blocks");
+const { nodesType } = require("./types/nodes");
 const { blocksWithCountType } = require("./types/blocksWithCount");
-const { transactionsType } = require("./types/transactions");
-const { transactionsWithCountType } = require("./types/transactionsWithCount");
+const { blocksBallotedAndTransactionsType } = require("./types/blocksBallotedAndTransactions");
 
 const DB = require("../db");
+
 // import Models
+var nodeModel= require("../db/models/node.model");
 var BlockModel = require("../db/models/block.model");
 var TransactionModel= require("../db/models/transaction.model");
-var ballotedTransactionsQueueModel= require("../db/models/ballotedTransactionsQueue.model");
+var ballotedDataModel= require("../db/models/ballotedData.model");
+
+const allNodes = {
+  type: GraphQLList(nodesType),
+  description: "View all nodes",
+  async resolve(parent, args, context) {
+    try {
+      let nodesData = await DB(nodeModel.table);
+      console.log("nodesData: ",nodesData);
+      return nodesData[0].nodes;
+    } catch (error) {
+      throw new Error(error);
+    }
+  },
+};
 
 const blocks = {
   type: blocksWithCountType,
-  description: "Latest blocks and view all blocks",
+  description: "Latest blocks and view all blocks against rpc",
   args: {
+    url: {type: GraphQLString},
     lastId: { type: GraphQLString },
     limit: { type: GraphQLString },
   },
@@ -26,146 +42,72 @@ const blocks = {
     try {
 
       // count total blocks
-      let arr = await DB(BlockModel.table).count('* as total');
-      let count = arr[0].total.toString();
+      let arr1 = await DB(BlockModel.table).count('* as total').where({rpcURL: args.url});
+      let arr2 = await DB(BlockModel.table).count('* as total');
+      let count1 = arr1[0].total.toString();
+      let count2 = arr2[0].total.toString();
 
-      let db_last_id = BigInt(count - args.lastId);
+      let db_last_id = BigInt(count2 - args.lastId);
 
       //Keyset pagination for blocks data
       let blocks = await DB(BlockModel.table)
+      .where({rpcURL: args.url})
       .where('id' ,'<=', db_last_id)
       .orderBy('id','desc')
       .limit(parseFloat(args.limit));
 
-      return {blocks: blocks, count: count};
+      return {blocks: blocks, count: count1};
     } catch (error) {
       throw new Error(error);
     }
   },
 };
 
-const block = {
-  type: blocksType,
-  description: "View a single block",
+const getBlocksBallotedAndTransactions = {
+  type: blocksBallotedAndTransactionsType,
+  description: "Latest blocks and view all blocks",
   args: {
-    number: { type: GraphQLString }
-  },
-  async resolve(parent, args, context) {
-    try {
-      let block = await DB(BlockModel.table).where({block_number : args.number});
-      return block[0];
-    } catch (error) {
-      throw new Error(error);
-    }
-  },
-};
-
-const transactions = {
-  type: transactionsWithCountType,
-  description: "Latest transactions and view all transactions",
-  args: {
-    lastId: { type: GraphQLString },
-    limit: { type: GraphQLString },
+    url: { type: GraphQLString },
+    blockNumber: { type: GraphQLString },
   },
   async resolve(parent, args, context) {
     try {
 
-      // count total transactions
-      let arr = await DB(TransactionModel.table).count('* as total');
-      let count = arr[0].total.toString();
+      let ballot = await DB(ballotedDataModel.table)
+      .where({rpcURL: args.url})
+      .where({block_number: args.blockNumber});
 
-      let db_last_id = BigInt(count - args.lastId);
+      let block = await DB(BlockModel.table)
+      .where({rpcURL: args.url})
+      .where({block_number: args.blockNumber});
 
-      //Keyset pagination for transactions data
-      let transactions = await DB(TransactionModel.table)
-      .where('id' ,'<=', db_last_id)
-      .orderBy('id','desc')
-      .limit(parseFloat(args.limit));
+      let transactionsData=[];
+
+      if(block[0].transactions == null)
+      {
+        transactionsData = null;
+      }
+      else{
+        for (var i =0; i < block[0].transactions.length; i++)
+        {
+          let transaction = await DB(TransactionModel.table)
+          .where({rpcURL: args.url})
+          .where({block: args.blockNumber})
+          .where({hash: block[0].transactions[i]});
+
+          transactionsData.push(transaction[0]);
+        }
+      }
       
-      return {transactions: transactions, count: count};
+      return { ballot: ballot[0], block: block[0], transactions: transactionsData };
     } catch (error) {
       throw new Error(error);
     }
   },
 };
-
-const transactionsByStatus = {
-  type: new GraphQLList(transactionsType),
-  description: "Unconfirmed Or Balloted Or Confirmed transactions according to status",
-  args: {
-    status: { type: GraphQLString }
-  },
-  async resolve(parent, args, context) {
-    try {
-
-      let transactions = await DB(TransactionModel.table)
-      .where({transaction_Status : args.status})
-      .orderBy('id','desc');
-
-      return transactions;
-    } catch (error) {
-      throw new Error(error);
-    }
-  },
-};
-
-const transaction = {
-  type: transactionsType,
-  description: "View a single transaction",
-  args: {
-    hash: { type: GraphQLString }
-  },
-  async resolve(parent, args, context) {
-    try {
-      let transaction = await DB(TransactionModel.table).where({hash : args.hash});
-      return transaction[0];
-    } catch (error) {
-      throw new Error(error);
-    }
-  },
-};
-
-const transactionsByAddress = {
-  type: transactionsWithCountType,
-  description: "All transactions of an address",
-  args: {
-    address: { type: GraphQLString },
-    searchInto: { type: GraphQLString },
-    offset: { type: GraphQLString },
-    limit: { type: GraphQLString },
-  },
-  async resolve(parent, args, context) {
-    try {
-
-      // count total transactions where to and from both
-      let arr = await DB(TransactionModel.table)
-      .where({from : args.address})
-      .orWhere({to: args.address})
-      .count('* as total');
-
-      let count = arr[0].total.toString();
-
-      //Keyset pagination for blocks data
-      let transactions = await DB(TransactionModel.table)
-      .where({from : args.address})
-      .orWhere({to: args.address})
-      .orderBy('id','desc')
-      .offset(BigInt(args.offset))
-      .limit(parseFloat(args.limit));
-      
-      return {transactions: transactions, count: count};
-    } catch (error) {
-      throw new Error(error);
-    }
-  },
-};
-
 
 module.exports = {
+  allNodes,
   blocks,
-  block,
-  transactions,
-  transaction,
-  transactionsByAddress,
-  transactionsByStatus
+  getBlocksBallotedAndTransactions
 };

@@ -5,7 +5,7 @@ module.exports = {
   whitelist: (data) =>
     whitelist(data, [
       id,
-      rcpURl,
+      rcpURL,
       transaction_Status,
       hash,
       block,

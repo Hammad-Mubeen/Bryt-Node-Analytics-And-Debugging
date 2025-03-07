@@ -29,7 +29,8 @@ const transactionsType = new GraphQLObjectType({
         node_id: {type: GraphQLString },
         gas: {type: GraphQLString },
         gas_price: {type: GraphQLString },
-        input: {type: GraphQLString }
+        input: {type: GraphQLString },
+        rpcURL:  {type: GraphQLString }
   })
 });
   

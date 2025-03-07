@@ -1,20 +1,19 @@
 const {
     GraphQLObjectType,
-    GraphQLID,
     GraphQLString
 } = require("graphql");
 
-const queueType = new GraphQLObjectType({
+const ballotType = new GraphQLObjectType({
   
-    name: "queue",
-    description: "queue type",
+    name: "ballot",
+    description: "ballot type",
     fields: () => ({
+        rpcURL: {type : GraphQLString},
         hash: {type : GraphQLString},
-        Status: {type : GraphQLString},
         timestamp: {type : GraphQLString},
         data: {type : GraphQLString}
   })
 });
   
-module.exports = { queueType };
+module.exports = { ballotType };
 

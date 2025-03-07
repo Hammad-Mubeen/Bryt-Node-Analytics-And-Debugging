@@ -1,14 +1,10 @@
 const whitelist = require("../../utils/whitelist");
 
 module.exports = {
-  table: "ballotedData",
+  table: "nodes",
   whitelist: (data) =>
     whitelist(data, [
       id,
-      rpcURL,
-      hash,
-      block_number,
-      timestamp,
-      data
+      nodes
     ])
 };
