@@ -802,8 +802,8 @@ async function processBlocksQueue()
   }
 }
 
-//listener();
-//processBallotedQueue();
-//processBlocksQueue();
+listener();
+processBallotedQueue();
+processBlocksQueue();
 
 module.exports = router;    
