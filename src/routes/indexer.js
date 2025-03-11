@@ -59,25 +59,6 @@ async function setWaitToBeMinedAndRetries(blockNumber)
   }
 }
 
-async function checkIfTransactionsFound(transactions_array,results,results_with_all_data)
-{
-  for (var i = 0; i < results.length; i++)
-  {
-    if (results[i]!=false)
-    {
-      if(results_with_all_data[i].result.transactions != null)
-      {
-        for (var j = 0; j < results_with_all_data[i].result.transactions.length; j++)
-        {
-          transactions_array.push(results_with_all_data[i].result.transactions[j]);
-        }
-      }
-    }
-  }
-  transactions_array = transactions_array.filter((value, index, self) => self.indexOf(value) === index);
-  return transactions_array;
-}
-
 async function findMaxDuplicateElement(arr) {
   const frequency = {};
 
@@ -459,37 +440,37 @@ async function syncData()
   }
 }
 
-// This function is to get correct block
-async function getCorrectBlock(blockNumber) {
+// This function is to check block status
+async function getBlockDataStatus(blockNumber) {
   try {
-    let results=[], results_without_false=[], results_with_all_data=[], index, block_status;
+    let results=[], results_without_false=[], allPortsData=[], block_status;
     //read all RPCS for blocks
     for (var i = 0; i < rpcs.length; i++)
     {
-      current_rpc = rpcs[i];
       console.log("RPC: ",JSON_RPC_NODE_URLs[i]);
-      let result = await fetchBlockDataHelper(blockNumber.toString(),current_rpc);
+      let portsData = {rpcURL: JSON_RPC_NODE_URLs[i], block_hash: null, block_status: null};
+      let result = await fetchBlockDataHelper(blockNumber.toString(),rpcs[i]);
       if(result == false)
       {
         results[i]= result;
-        results_with_all_data[i] = result;
       }
       else{
         results[i]=result.result.block_hash;
-        results_with_all_data[i]= result;
+        portsData.block_hash= result.result.block_hash;
+        portsData.block_status = "Minority";
       }
       console.log("block data: ",result);
+      allPortsData.push(portsData);
     }
 
-    // return false after saving faulty block number
     let result = !results.some(e => e);
     if (result == true)
     {
-      block_status= "not found";
+      block_status= "Not Found";
       console.log("block data not found on any RPC: ",blockNumber);
       await saveFaultyBlockInDb(blockNumber,block_status);
       console.log("Saved faulty block in db.");
-      return {blockData: false, block_status: block_status};
+      return {allPortsData: allPortsData, block_status: block_status};
     }
     else
     {
@@ -497,10 +478,11 @@ async function getCorrectBlock(blockNumber) {
       results_without_false= results.filter(element => element !== false);
       if(results_without_false.length == 1)
       {
-        console.log("One block data is found, setting that rpc and returning data.");
-        console.log("block data is correct for blocknumber: ",blockNumber);
+        console.log("Only 1 port have block data, block data is correct for blocknumber: ",blockNumber);
         index = results.indexOf(results_without_false[0]);
+        allPortsData[index].block_status = "Majority";
         block_status="Finalized";
+        return {allPortsData: allPortsData, block_status: block_status};
       }
       else{
         //check highest block hash occurance
@@ -513,15 +495,6 @@ async function getCorrectBlock(blockNumber) {
             count++;
           }
         }
-        
-        //check on which ports transactions found
-        let transactions_array=[];
-        transactions_array = await checkIfTransactionsFound(transactions_array,results,results_with_all_data);
-        if(transactions_array.length != 0){
-          index = results.indexOf(results_without_false[0]);
-          results_with_all_data[index].result.transactions = transactions_array;
-        }
-  
         //if data is not correct
         if(maxDuplicateElement.count == 1 || count > 1)
         {  
@@ -529,34 +502,30 @@ async function getCorrectBlock(blockNumber) {
           console.log("block data is not correct, either all different block hashes on ports OR no highest occurance of one block hash: ",blockNumber);
           await saveFaultyBlockInDb(blockNumber,block_status);
           console.log("Saved faulty block in db.");
-          //if no transactions found
-          if(transactions_array.length == 0)
-          {
-            index = results.indexOf(results_without_false[0]);
-          }
-          minority = true;
-          if(majority == true || majority == null)
-          {
-            lastMinorityBlock = blockNumber;
-          }
-          majority = false;
+          // minority = true;
+          // if(majority == true || majority == null)
+          // {
+          //   lastMinorityBlock = blockNumber;
+          // }
+          // majority = false;
+          return {allPortsData: allPortsData, block_status: block_status};
         }
         else{
-          console.log("block data is correct, either all block hashes are same on ports OR a highest occurance of one block hash: ",blockNumber);
-          //if no transactions found
-          if(transactions_array.length == 0)
-          {
-            index = results.indexOf(maxDuplicateElement.element);
-          }
           block_status="Finalized";
-
-          majority = true;
-          latestMajorityBlock = blockNumber;
+          console.log("block data is correct, either all block hashes are same on ports OR a highest occurance of one block hash: ",blockNumber);
+          // majority = true;
+          // latestMajorityBlock = blockNumber;
           //syncData();
+          for (var i=0; i<allPortsData.length; i++)
+          {
+            if(allPortsData[i].block_hash == maxDuplicateElement.element)
+            {
+              allPortsData[i].block_status = "Majority";
+            }
+          }
+          return {allPortsData: allPortsData, block_status: block_status};
         }
       }
-      current_rpc = rpcs[index];
-      return {blockData: results_with_all_data[index], block_status:block_status};
     }
   } catch (error) {
     console.log("Error : ", error);
@@ -802,8 +771,55 @@ async function processBlocksQueue()
   }
 }
 
+async function checkBlockDataMajorityAndMinority()
+{
+  try{
+    console.log("block Data mined(minority and majority) checking started...");
+    blockNumber=BigInt(1);
+    while (true)
+    {
+      await setWaitToBeMinedAndRetries(blockNumber);
+      let {allPortsData,block_status} = await getBlockDataStatus(blockNumber);
+      if (block_status == "Not Found")
+      {
+        console.log("Block Data not found on any port: ",blockNumber);
+      }
+      else
+      {
+        for (var i=0; i< allPortsData.length;i++)
+        {
+          if(allPortsData[i].block_hash != null)
+          {
+            console.log("allPortsData[i].rpcURL: ",allPortsData[i].rpcURL);
+            console.log("blockNumber: ",blockNumber);
+            console.log("allPortsData[i].block_hash: ",allPortsData[i].block_hash);
+            console.log("block_status: ",block_status);
+            console.log("allPortsData[i].block_status: ",allPortsData[i].block_status);
+            await DB(BlockModel.table)
+            .where({rpcURL: allPortsData[i].rpcURL,
+              block_number : (blockNumber).toString(),
+              block_hash: allPortsData[i].block_hash
+            })
+            .update({
+              block_status: block_status,
+              Status: allPortsData[i].block_status
+            });
+          }
+          else{
+            console.log("Block Data not found on port: " +allPortsData[i].rpcURL + " blockNumber: " + blockNumber + " blockHash: " + allPortsData[i].block_hash);
+          }
+        }
+      }
+      blockNumber = blockNumber + BigInt(1);
+    }
+  }catch(error){
+    console.log("error : ", error);
+  }
+}
+
 listener();
 processBallotedQueue();
 processBlocksQueue();
+checkBlockDataMajorityAndMinority();
 
 module.exports = router;    
